@@ -5,12 +5,13 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.Bundle;
 import android.os.Looper;
-import android.support.wearable.activity.WearableActivity;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.fragment.app.FragmentActivity;
+import androidx.wear.ambient.AmbientModeSupport;
 import androidx.wear.widget.WearableLinearLayoutManager;
 import androidx.wear.widget.WearableRecyclerView;
 
@@ -24,10 +25,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 
 /**
- * NB: this sample application was widely inspired by :
- * https://github.com/android/wear-os-samples/tree/master/SpeedTracker
+ * NB: this sample application was widely inspired from https://github.com/android/wear-os-samples/tree/master/SpeedTracker
  */
-public class MainActivity extends WearableActivity implements
+public class MainActivity extends FragmentActivity implements
+        AmbientModeSupport.AmbientCallbackProvider,
         ActivityCompat.OnRequestPermissionsResultCallback {
 
     final static String LOG_TAG = MainActivity.class.getSimpleName();
@@ -40,6 +41,8 @@ public class MainActivity extends WearableActivity implements
     private WearableRecyclerView.Adapter adapter;
     private ArrayList<Location> locations = new ArrayList<>();
 
+    // Ambient mode support (aka Always-on)
+    private AmbientModeSupport.AmbientController ambientController;
     // GPS
     private LocationRequest locationRequest;
     private FusedLocationProviderClient fusedLocationClient;
@@ -50,8 +53,16 @@ public class MainActivity extends WearableActivity implements
         Log.d(LOG_TAG, "onCreate()");
         setContentView(R.layout.activity_main);
 
-        // Enables Always-on
-        setAmbientEnabled(); // inherited from WearableActivity
+        /*
+         * Enables Always-on, so our app doesn't shut down when the watch goes into ambient mode.
+         * Best practice is to override onEnterAmbient(), onUpdateAmbient(), and onExitAmbient() to
+         * optimize the display for ambient mode. However, for brevity, we aren't doing that here
+         * to focus on learning location and permissions. For more information on best practices
+         * in ambient mode, check this page:
+         * https://developer.android.com/training/wearables/apps/always-on.html
+         */
+        // Enables Ambient mode.
+        ambientController = AmbientModeSupport.attach(this);
 
         // Check that the watch has embedded GPS, exit application otherwise
         if (!hasGps()) {
@@ -118,7 +129,7 @@ public class MainActivity extends WearableActivity implements
                     Looper.getMainLooper()
             );
         } else {
-            Log.e(LOG_TAG,"ask for location permission should not happen");
+            Log.e(LOG_TAG, "ask for location permission should not happen");
             finish();
         }
     }
@@ -182,4 +193,32 @@ public class MainActivity extends WearableActivity implements
         startLocationUpdates();
     }
 
+    /* *********************************************************************************************
+     * AMBIENT MODE Callbacks
+     * *********************************************************************************************
+     */
+    @Override
+    public AmbientModeSupport.AmbientCallback getAmbientCallback() {
+        return new MyAmbientCallback();
+    }
+
+    private class MyAmbientCallback extends AmbientModeSupport.AmbientCallback {
+        /**
+         * Prepares the UI for ambient mode.
+         */
+        @Override
+        public void onEnterAmbient(Bundle ambientDetails) {
+            super.onEnterAmbient(ambientDetails);
+            Log.d(LOG_TAG, "onEnterAmbient() " + ambientDetails);
+        }
+
+        /**
+         * Restores the UI to active (non-ambient) mode.
+         */
+        @Override
+        public void onExitAmbient() {
+            super.onExitAmbient();
+            Log.d(LOG_TAG, "onExitAmbient()");
+        }
+    }
 }
