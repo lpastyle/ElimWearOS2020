@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">GpsMemo</string>
+    <!--
+    This string is used for square devices and overridden by hello_world in
+    values-round/strings.xml for round devices.
+    -->
+    <string name="latitude">lat</string>
+    <string name="longitude">lon</string>
+    <string name="latlon_format">Lat=%1$f, Lon=%2$f</string>
+</resources>

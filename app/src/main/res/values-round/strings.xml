@@ -1,0 +1,5 @@
+<resources>
+    <string name="latitude">lat</string>
+    <string name="longitude">lon</string>
+    <string name="latlon_format">Lat=%1$f, Lon=%2$f</string>
+</resources>
