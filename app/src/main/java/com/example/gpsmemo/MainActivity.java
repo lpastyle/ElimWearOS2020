@@ -4,26 +4,21 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.Bundle;
+import android.os.Looper;
 import android.support.wearable.activity.WearableActivity;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.wear.widget.WearableLinearLayoutManager;
 import androidx.wear.widget.WearableRecyclerView;
 
-import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.api.GoogleApiClient;
-import com.google.android.gms.common.api.ResultCallback;
-import com.google.android.gms.common.api.Status;
 import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationListener;
+import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.tasks.OnSuccessListener;
-import com.google.android.gms.wearable.Wearable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -33,11 +28,7 @@ import java.util.Arrays;
  * https://github.com/android/wear-os-samples/tree/master/SpeedTracker
  */
 public class MainActivity extends WearableActivity implements
-        OnSuccessListener<Location>,
-        ActivityCompat.OnRequestPermissionsResultCallback,
-        GoogleApiClient.ConnectionCallbacks,
-        GoogleApiClient.OnConnectionFailedListener,
-        LocationListener {
+        ActivityCompat.OnRequestPermissionsResultCallback {
 
     final static String LOG_TAG = MainActivity.class.getSimpleName();
     public static final long LOCATION_UPDATE_INTERVAL = 3000; // duration in milliseconds
@@ -49,7 +40,9 @@ public class MainActivity extends WearableActivity implements
     private WearableRecyclerView.Adapter adapter;
     private ArrayList<Location> locations = new ArrayList<>();
 
-    private GoogleApiClient googleApiClient;
+    // GPS
+    private LocationRequest locationRequest;
+    private FusedLocationProviderClient fusedLocationClient;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,9 +77,13 @@ public class MainActivity extends WearableActivity implements
             Log.e(LOG_TAG, "recycler view not found");
         }
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+        // init location provider client
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+
+        // Check and ask for location permission
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             Log.d(LOG_TAG, "Location permission already granted");
-            initLocationMonitoring();
+            startLocationUpdates();
         } else {
             Log.d(LOG_TAG, "ask for the location permission");
             ActivityCompat.requestPermissions(
@@ -94,7 +91,6 @@ public class MainActivity extends WearableActivity implements
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
                     REQUEST_GPS_PERMISSION_RESULT_CODE);
         }
-
     }
 
     /* *********************************************************************************************
@@ -106,47 +102,25 @@ public class MainActivity extends WearableActivity implements
         return getPackageManager().hasSystemFeature(PackageManager.FEATURE_LOCATION_GPS);
     }
 
-    private void initLocationMonitoring() {
-        Log.d(LOG_TAG, "initLocationMonitoring()");
+    private void startLocationUpdates() {
+        Log.d(LOG_TAG, "startLocationUpdates()");
 
-        // get last known location
-        FusedLocationProviderClient locationProviderClient = LocationServices.getFusedLocationProviderClient(this);
-        locationProviderClient.getLastLocation().addOnSuccessListener(this, this);
-
-        // init Google Maps Services
-        googleApiClient = new GoogleApiClient.Builder(this)
-                .addApi(LocationServices.API)
-                .addApi(Wearable.API)
-                .addConnectionCallbacks(this)
-                .addOnConnectionFailedListener(this)
-                .build();
-    }
-
-    protected void createLocationRequest() {
-        Log.d(LOG_TAG, "createLocationRequest()");
-
-        LocationRequest locationRequest = LocationRequest.create();
+        // create location request
+        locationRequest = LocationRequest.create();
         locationRequest.setInterval(LOCATION_UPDATE_INTERVAL);
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
 
-        LocationServices.FusedLocationApi.requestLocationUpdates(googleApiClient, locationRequest, this)
-                .setResultCallback(new ResultCallback<Status>() {
-                    @Override
-                    public void onResult(@NonNull Status status) {
-                        if (status.getStatus().isSuccess()) {
-                            Log.d(LOG_TAG, "Successfully requested location updates");
-                        } else {
-                            Log.e(LOG_TAG, "Failed in requesting location updates " + status.getStatusMessage());
-                        }
-                    }
-                });
-    }
-
-    private Location makeLoc(double lat, double lon) {
-        Location l = new Location(LOC_PROVIDER);
-        l.setLatitude(lat);
-        l.setLongitude(lon);
-        return l;
+        // start location updates
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            fusedLocationClient.requestLocationUpdates(
+                    locationRequest,
+                    locationCallback,
+                    Looper.getMainLooper()
+            );
+        } else {
+            Log.e(LOG_TAG,"ask for location permission should not happen");
+            finish();
+        }
     }
 
     @Override
@@ -158,7 +132,7 @@ public class MainActivity extends WearableActivity implements
 
             if ((grantResults.length == 1) && (grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
                 Log.i(LOG_TAG, "GPS permission granted.");
-                initLocationMonitoring();
+                startLocationUpdates();
             } else {
                 Log.i(LOG_TAG, "GPS permission NOT granted.");
             }
@@ -168,51 +142,27 @@ public class MainActivity extends WearableActivity implements
     }
 
     /* *********************************************************************************************
-     * FUSED LOCATION CALLBACK
+     * LOCATION Callbacks
      * *********************************************************************************************
      */
-    @Override
-    public void onLocationChanged(Location location) {
-        Log.d(LOG_TAG, "onLocationChanged()");
-        int length = locations.size();
-        if (length >= MAX_LOCATION_RECORDED)
-            locations.remove(length - 1); // remove last element
-        locations.add(0, location); // insert new element
-        adapter.notifyDataSetChanged();
-    }
-
-    @Override
-    public void onSuccess(Location location) {
-        Log.d(LOG_TAG, "onSuccess()");
-        if (location != null) {
-            locations.add(location);
-        } else {
-            // Use Polytech-Sophia as the default location !
-            locations.add(makeLoc(43.615785, 7.071757));
+    // Warning this is not a method, but a member data declaration
+    private final LocationCallback locationCallback = new LocationCallback() {
+        @Override
+        public void onLocationResult(LocationResult locationResult) {
+            Log.d(LOG_TAG, "onLocationResult()");
+            if (locationResult == null) {
+                return;
+            }
+            for (Location location : locationResult.getLocations()) {
+                int length = locations.size();
+                if (length >= MAX_LOCATION_RECORDED) {
+                    locations.remove(length - 1); // remove last element
+                }
+                locations.add(0, location); // insert new element
+                adapter.notifyDataSetChanged();
+            }
         }
-        adapter.notifyDataSetChanged();
-    }
-    /* *********************************************************************************************
-     * GOOGLE MAPS SERVICES Callbacks
-     * *********************************************************************************************
-     */
-
-    @Override
-    public void onConnected(@Nullable Bundle bundle) {
-        Log.d(LOG_TAG, "onConnected()");
-        createLocationRequest();
-    }
-
-    @Override
-    public void onConnectionSuspended(int i) {
-        Log.d(LOG_TAG, "onConnectionSuspended()");
-        LocationServices.FusedLocationApi.removeLocationUpdates(googleApiClient, this);
-    }
-
-    @Override
-    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
-        Log.e(LOG_TAG, "onConnectionFailed(): " + connectionResult.getErrorMessage());
-    }
+    };
 
     /* *********************************************************************************************
      * ACTIVITY LIFECYCLE Callbacks
@@ -222,18 +172,14 @@ public class MainActivity extends WearableActivity implements
     protected void onPause() {
         super.onPause();
         Log.d(LOG_TAG, "onPause()");
-        if ((googleApiClient != null) && (googleApiClient.isConnected()) && (googleApiClient.isConnecting())) {
-            googleApiClient.disconnect();
-        }
-
+        fusedLocationClient.removeLocationUpdates(locationCallback);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         Log.d(LOG_TAG, "onResume()");
-        if (googleApiClient != null) {
-            googleApiClient.connect();
-        }
+        startLocationUpdates();
     }
+
 }
