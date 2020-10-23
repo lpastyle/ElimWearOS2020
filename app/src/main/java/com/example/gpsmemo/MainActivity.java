@@ -170,8 +170,8 @@ public class MainActivity extends FragmentActivity implements
                     locations.remove(length - 1); // remove last element
                 }
                 locations.add(0, location); // insert new element
-                adapter.notifyDataSetChanged();
             }
+            adapter.notifyDataSetChanged();
         }
     };
 
